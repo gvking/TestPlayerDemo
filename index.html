@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Video Renderer Demo</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    .video-container { display: flex; gap: 40px; margin-bottom: 40px; }
+    .video-card { display: flex; flex-direction: column; align-items: center; }
+    .video-card h2 { margin-top: 0; }
+    
+    #paste-area {
+      border: 3px dashed #ccc;
+      border-radius: 10px;
+      padding: 40px;
+      text-align: center;
+      min-height: 200px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background-color: #f9f9f9;
+      color: #666;
+      cursor: pointer;
+      transition: background-color 0.2s, border-color 0.2s;
+    }
+    #paste-area:hover {
+      background-color: #f0f0f0;
+      border-color: #aaa;
+    }
+    #paste-area.active {
+      border-color: #4CAF50;
+      background-color: #e8f5e9;
+      color: #333;
+    }
+    #pasted-images {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      margin-top: 20px;
+      width: 100%;
+      justify-content: center;
+      align-items: flex-start;
+    }
+    #pasted-images img {
+      max-width: 100%;
+      height: auto;
+      object-fit: contain;
+      border: 1px solid #aaa;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+  </style>
+</head>
+<body>
+  
+  <div class="video-container">
+    <div class="video-card">
+      <h2>Vertical Video (9:20, 270x591)</h2>
+      <video id="video1" width="270" height="591" controls muted loop playsinline autoplay></video>
+    </div>
+    
+    <div class="video-card">
+      <h2>Normal Res Video (16:9, 480x270)</h2>
+      <video id="video2" width="480" height="270" controls muted loop playsinline autoplay></video>
+    </div>
+  </div>
+
+  <hr>
+
+  <div id="paste-area">
+    <h2>Paste "Copy Video Frame" Here</h2>
+    <p>Right-click a video above -> "Copy video frame", then press Ctrl+V / Cmd+V anywhere, OR <b>left-click here</b> to paste.</p>
+    <div id="pasted-images"></div>
+  </div>
+
+  <script>
+    function createBouncingStream(width, height) {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      
+      let x = width / 2;
+      let y = height / 2;
+      // Scale velocity and box size relative to resolution
+      let vx = width * 0.01;
+      let vy = height * 0.015;
+      let boxSize = Math.min(width, height) * 0.25; 
+      let hue = 0;
+
+      function draw() {
+        // Draw background
+        ctx.fillStyle = `hsl(${hue}, 80%, 30%)`;
+        ctx.fillRect(0, 0, width, height);
+        
+        // Draw a grid to make stretching obvious (always draw perfect squares)
+        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let i = 0; i < width; i += 50) {
+          ctx.moveTo(i, 0);
+          ctx.lineTo(i, height);
+        }
+        for (let i = 0; i < height; i += 50) {
+          ctx.moveTo(0, i);
+          ctx.lineTo(width, i);
+        }
+        ctx.stroke();
+
+        // Draw bouncing block
+        ctx.fillStyle = 'white';
+        ctx.fillRect(x, y, boxSize, boxSize);
+        
+        x += vx;
+        y += vy;
+        hue = (hue + 1) % 360;
+        
+        if (x < 0 || x + boxSize > width) vx = -vx;
+        if (y < 0 || y + boxSize > height) vy = -vy;
+        
+        requestAnimationFrame(draw);
+      }
+      draw();
+      return canvas.captureStream(30);
+    }
+
+    const video1 = document.getElementById('video1');
+
+    video1.srcObject = createBouncingStream(270, 591);
+    video1.play();
+
+    const video2 = document.getElementById('video2');
+
+    video2.srcObject = createBouncingStream(480, 270);
+    video2.play();
+
+
+    const pasteArea = document.getElementById('paste-area');
+    const pastedImagesContainer = document.getElementById('pasted-images');
+
+    function handleImageFile(blob) {
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const img = document.createElement('img');
+        img.src = event.target.result;
+        pastedImagesContainer.prepend(img);
+        pasteArea.classList.add('active');
+        setTimeout(() => pasteArea.classList.remove('active'), 300);
+      };
+      reader.readAsDataURL(blob);
+    }
+
+    window.addEventListener('paste', e => {
+      const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+      for (let index in items) {
+        const item = items[index];
+        if (item.kind === 'file' && item.type.startsWith('image/')) {
+          handleImageFile(item.getAsFile());
+        }
+      }
+    });
+
+    pasteArea.addEventListener('click', async () => {
+      if (!navigator.clipboard || !navigator.clipboard.read) {
+        alert("Your browser does not support the Clipboard Async API, please use Ctrl+V / Cmd+V.");
+        return;
+      }
+      
+      try {
+        const clipboardItems = await navigator.clipboard.read();
+        for (const clipboardItem of clipboardItems) {
+          for (const type of clipboardItem.types) {
+            if (type.startsWith('image/')) {
+              const blob = await clipboardItem.getType(type);
+              handleImageFile(blob);
+            }
+          }
+        }
+      } catch (err) {
+        console.error(err.name, err.message);
+        if (err.name === 'NotAllowedError') {
+          alert("Please grant clipboard permission to paste via click, or use Ctrl+V / Cmd+V.");
+        }
+      }
+    });
+  </script>
+</body>
+</html>
